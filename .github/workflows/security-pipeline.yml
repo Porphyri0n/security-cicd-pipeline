@@ -1,0 +1,173 @@
+name: "Guvenlik Kapisi - CI/CD Boru Hatti"
+
+# ============================================================
+# TETIKLEYICILER: Ne zaman calisacak?
+# ============================================================
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # Manuel tetikleme (test amacli)
+  workflow_dispatch:
+
+# ============================================================
+# ORTAM DEGISKENLERI
+# ============================================================
+env:
+  PYTHON_VERSION: "3.11"
+  SEMGREP_RULES: "p/python p/flask p/secrets p/owasp-top-ten"
+
+# ============================================================
+# IS AKISI (JOBS)
+# ============================================================
+jobs:
+
+  # ----------------------------------------------------------
+  # JOB 1: Statik Guvenlik Analizi (Semgrep)
+  # ----------------------------------------------------------
+  security-scan:
+    name: "Semgrep Guvenlik Taramasi"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Adim 1: Kodu cek
+      - name: "Kodu cek (Checkout)"
+        uses: actions/checkout@v4
+
+      # Adim 2: Python kur (pip cache ile)
+      - name: "Python kur"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      # Adim 3: Bagimliliklari yukle
+      - name: "Bagimliliklari yukle"
+        run: |
+          pip install -r app/requirements.txt
+          pip install semgrep
+
+      # Adim 4: Semgrep ile tarama (KRITIK ADIM)
+      - name: "Semgrep Guvenlik Taramasi"
+        id: semgrep_scan
+        run: |
+          echo "=== Semgrep Taramasi Basliyor ==="
+
+          # JSON rapor olustur
+          semgrep \
+            --config p/python \
+            --config p/flask \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --config semgrep/custom/ \
+            --json \
+            --output semgrep-report.json \
+            app/ || true
+
+          # Bulgu sayisini hesapla
+          FINDINGS=$(cat semgrep-report.json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          errors = [r for r in data.get('results', []) if r.get('extra', {}).get('severity') == 'ERROR']
+          warnings = [r for r in data.get('results', []) if r.get('extra', {}).get('severity') == 'WARNING']
+          print(f'ERRORS={len(errors)}')
+          print(f'WARNINGS={len(warnings)}')
+          print(f'TOTAL={len(data.get(\"results\", []))}')
+          ")
+
+          echo "$FINDINGS"
+          echo "$FINDINGS" >> $GITHUB_OUTPUT
+
+          # ERROR seviyesinde bulgu varsa pipeline'i DURDUR
+          ERROR_COUNT=$(echo "$FINDINGS" | grep ERRORS | cut -d= -f2)
+          if [ "$ERROR_COUNT" -gt 0 ]; then
+            echo "HATA: $ERROR_COUNT adet ERROR seviyesinde guvenlik acigi bulundu!"
+            echo "scan_failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "BASARILI: Kritik guvenlik acigi bulunamadi."
+            echo "scan_failed=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Adim 5: Raporu artifact olarak kaydet
+      - name: "Semgrep Raporunu Kaydet"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-security-report
+          path: semgrep-report.json
+          retention-days: 30
+
+      # Adim 6: Basarisizsa webhook ile bildir (Discord + Slack)
+      - name: "Guvenlik Uyarisi Gonder"
+        if: failure()
+        run: |
+          python3 notifications/send_alert.py \
+            --report semgrep-report.json \
+            --webhook-url "${{ secrets.DISCORD_WEBHOOK_URL }}" || true
+          python3 notifications/send_alert.py \
+            --report semgrep-report.json \
+            --webhook-url "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --platform slack || true
+
+  # ----------------------------------------------------------
+  # JOB 2: Docker Build (Sadece guvenlik taramasi gecerse)
+  # ----------------------------------------------------------
+  docker-build:
+    name: "Docker Build"
+    runs-on: ubuntu-latest
+    needs: security-scan  # GUVENLIK KAPISI: Tarama gecmeden build yapilmaz
+    timeout-minutes: 10
+
+    steps:
+      - name: "Kodu cek"
+        uses: actions/checkout@v4
+
+      - name: "Docker Image Olustur"
+        run: |
+          docker build -t secure-api:${{ github.sha }} -f docker/Dockerfile .
+
+      - name: "Build Basarili"
+        run: echo "Docker image basariyla olusturuldu"
+
+  # ----------------------------------------------------------
+  # JOB 3: Deploy (Sadece build gecerse)
+  # ----------------------------------------------------------
+  deploy:
+    name: "Canliya Al (Deploy)"
+    runs-on: ubuntu-latest
+    needs: docker-build  # Build gecmeden deploy yapilmaz
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+
+    steps:
+      - name: "Kodu cek"
+        uses: actions/checkout@v4
+
+      - name: "Python kur"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: "Deploy Simulasyonu"
+        run: |
+          echo "Tum guvenlik kontrolleri gecti!"
+          echo "Docker build basarili!"
+          echo "Uygulama canliya aliniyor..."
+          echo "   (Gercek deploy komutu buraya gelecek)"
+
+      - name: "Deploy Basari Bildirimi"
+        run: |
+          pip install requests
+          python3 notifications/send_alert.py \
+            --type success \
+            --message "Deployment basarili: ${{ github.sha }}" \
+            --webhook-url "${{ secrets.DISCORD_WEBHOOK_URL }}" || true
+          python3 notifications/send_alert.py \
+            --type success \
+            --message "Deployment basarili: ${{ github.sha }}" \
+            --webhook-url "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --platform slack || true

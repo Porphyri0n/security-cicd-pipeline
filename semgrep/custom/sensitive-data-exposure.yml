@@ -1,0 +1,24 @@
+rules:
+  - id: custom-env-vars-exposure
+    pattern: dict(os.environ)
+    message: >
+      Tum ortam degiskenleri erisilebilir hale getiriliyor. Bu hassas bilgilerin
+      (API anahtarlari, veritabani sifreleri vb.) sizmasina yol acar.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe: "CWE-215: Insertion of Sensitive Information Into Debugging Code"
+
+  - id: custom-flask-debug-enabled
+    pattern: $APP.run(..., debug=True, ...)
+    message: >
+      Flask uygulamasi debug=True ile calistiriliyor. Uretimde debug modu
+      hata izlerini (stack trace) ve interaktif debugger'i disariya acar.
+      Ortam degiskeninden okuyun veya debug=False kullanin.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-215: Insertion of Sensitive Information Into Debugging Code"

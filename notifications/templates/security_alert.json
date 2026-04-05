@@ -1,0 +1,16 @@
+{
+  "embeds": [
+    {
+      "title": "GUVENLIK UYARISI - Pipeline Durduruldu",
+      "color": 16711680,
+      "fields": [
+        {"name": "Toplam Bulgu", "value": "{{total_findings}}", "inline": true},
+        {"name": "Kritik (ERROR)", "value": "{{errors}}", "inline": true},
+        {"name": "Uyari (WARNING)", "value": "{{warnings}}", "inline": true}
+      ],
+      "description": "{{findings_details}}",
+      "footer": {"text": "CI/CD Guvenlik Boru Hatti"},
+      "timestamp": "{{timestamp}}"
+    }
+  ]
+}

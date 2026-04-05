@@ -1,0 +1,11 @@
+.git
+.github
+__pycache__
+*.pyc
+.env
+*.md
+docs/
+tests/
+semgrep/
+app/vulnerable/
+semgrep-report.json

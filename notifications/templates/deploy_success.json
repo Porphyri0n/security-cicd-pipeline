@@ -1,0 +1,15 @@
+{
+  "embeds": [
+    {
+      "title": "Deploy Basarili",
+      "color": 65280,
+      "description": "Tum guvenlik kontrolleri gecti ve deploy basariyla tamamlandi.",
+      "fields": [
+        {"name": "Commit", "value": "{{commit_sha}}", "inline": true},
+        {"name": "Branch", "value": "{{branch}}", "inline": true}
+      ],
+      "footer": {"text": "CI/CD Guvenlik Boru Hatti"},
+      "timestamp": "{{timestamp}}"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+rules:
+  - id: custom-sql-string-concat
+    patterns:
+      - pattern: |
+          $QUERY = "..." + $INPUT + "..."
+          ...
+          $CURSOR.execute($QUERY)
+    message: >
+      SQL sorgusunda string birlestirme tespit edildi.
+      Bu SQL Injection'a acik kapi birakir.
+      Parametrik sorgu kullanin: cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe: "CWE-89: SQL Injection"
+
+  - id: custom-sql-fstring
+    pattern: |
+      $CURSOR.execute(f"...{$INPUT}...")
+    message: >
+      SQL sorgusunda f-string kullanimi tespit edildi. SQL Injection riski!
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-89"

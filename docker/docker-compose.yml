@@ -1,0 +1,38 @@
+services:
+  # Ana uygulama
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - API_SECRET_KEY=${API_SECRET_KEY:-dev-secret-key}
+      - DEBUG_MODE=false
+    env_file:
+      - ../.env  # Hassas degiskenler .env'den okunur
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Semgrep tarama servisi (opsiyonel, CI/CD disinda lokal test icin)
+  semgrep-scanner:
+    image: returntocorp/semgrep:latest
+    volumes:
+      - ../app:/src/app:ro
+      - ../semgrep:/src/semgrep:ro
+    command: >
+      semgrep
+        --config p/python
+        --config p/flask
+        --config p/secrets
+        --config /src/semgrep/custom/
+        --json
+        /src/app/
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

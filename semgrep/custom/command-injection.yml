@@ -1,0 +1,41 @@
+rules:
+  - id: custom-os-popen-injection
+    pattern-either:
+      - pattern: os.popen(...)
+      - pattern: subprocess.os.popen(...)
+    message: >
+      os.popen() kullanimi tespit edildi. Bu fonksiyon her zaman shell uzerinden
+      komut calistirir ve Command Injection'a aciktir.
+      subprocess.run() + shell=False kullanin.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe: "CWE-78: OS Command Injection"
+
+  - id: custom-os-system-injection
+    pattern: os.system(...)
+    message: >
+      os.system() kullanimi tespit edildi. Shell uzerinden komut calistirmak
+      Command Injection riski olusturur. subprocess.run() + shell=False kullanin.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe: "CWE-78: OS Command Injection"
+
+  - id: custom-subprocess-shell-true
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+    message: >
+      subprocess shell=True ile cagriliyor. Kullanici girdisi iceriyorsa
+      Command Injection riski vardir. shell=False ve liste argumanlari kullanin.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
