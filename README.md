@@ -1,101 +1,113 @@
-# Kendi Kendini Denetleyen Guvenli CI/CD Boru Hatti
+# Self-Verifying Secure CI/CD Pipeline
 
-Yazilimcilarin canli sisteme zafiyetli kod gondermesini engelleyen otomatik
-guvenlik kapilari (security gates) iceren CI/CD boru hatti.
+[![Security Pipeline](https://github.com/SenorTacco/security-cicd-pipeline/actions/workflows/security-pipeline.yml/badge.svg)](https://github.com/SenorTacco/security-cicd-pipeline/actions/workflows/security-pipeline.yml)
 
-## Ne Yapar?
+> Türkçe sürüm için: [README.tr.md](README.tr.md)
 
-Bir gelistirici kodu push ettiginde GitHub Actions uzerinde su kontroller calisir:
+A CI/CD pipeline with automated security gates that prevent developers from
+shipping vulnerable code to production — and that proves its own security
+rules still work on every push.
 
-| Job | Gorev | Basarisiz Olursa |
-|-----|-------|------------------|
-| **Guvenlik Kapisi** | Uretim kodu (`app/secure/`) Semgrep ile taranir | Deploy engellenir + Discord/Slack'e uyari gider |
-| **Kural Dogrulama** | Zafiyetli demo kod (`app/vulnerable/`) taranir, kurallarin zafiyetleri **yakaladigi** kanitlanir | Kural seti bozulmus demektir, pipeline durur |
-| **Testler** | pytest ile guvenlik ve entegrasyon testleri kosulur | Pipeline durur |
-| **Bagimlilik Denetimi** | pip-audit ile bilinen CVE'ler kontrol edilir | Pipeline durur |
-| **Docker Build** | Tum kontroller gectiyse image olusturulur | Deploy engellenir |
-| **Deploy** | Sadece `main` branch'te ve build basariliysa calisir | - |
+## How It Works
 
-Boylece pipeline hem uretim kodunu korur hem de kendi guvenlik kurallarinin
-calistigini her push'ta dogrular.
+Whenever a developer pushes code, the following checks run on GitHub Actions:
 
-## Hizli Baslangic
+| Job | Purpose | On Failure |
+|-----|---------|------------|
+| **Security Gate** | Production code (`app/secure/`) is scanned with Semgrep | Deploy is blocked + an alert is sent to Discord/Slack |
+| **Rule Verification** | The intentionally vulnerable demo code (`app/vulnerable/`) is scanned to prove the rules **do** catch vulnerabilities | The rule set is considered broken and the pipeline stops |
+| **Tests** | Security and integration tests run with pytest | Pipeline stops |
+| **Dependency Audit** | Dependencies are checked for known CVEs with pip-audit | Pipeline stops |
+| **Docker Build** | The image is built only if every check above passes | Deploy is blocked |
+| **Deploy** | Runs only on the `main` branch after a successful build | - |
+
+This way the pipeline not only protects the production code, but also
+verifies on every push that its own security rules are still effective.
+
+## Quick Start
 
 ```bash
-# 1. Repo'yu klonla
-git clone <repo-url> && cd security-cicd-pipeline
+# 1. Clone the repository
+git clone https://github.com/SenorTacco/security-cicd-pipeline.git
+cd security-cicd-pipeline
 
-# 2. Kurulumu calistir
+# 2. Run the setup script
 bash scripts/setup.sh
 
-# 3. Ortam degiskenlerini hazirla (.env ASLA commit edilmez)
+# 3. Prepare environment variables (.env is NEVER committed)
 cp .env.example .env
 
-# 4. Demo'yu izle
+# 4. Watch the demo
 bash scripts/demo.sh
 ```
 
-Ayrintili kurulum (webhook, GitHub Secrets vb.) icin [Kurulum Rehberi](docs/SETUP_GUIDE.md).
+For detailed setup instructions (webhooks, GitHub Secrets, etc.) see the
+[Setup Guide](docs/SETUP_GUIDE.md).
 
-## Ozellikler
+## Features
 
-- **Statik Analiz:** Semgrep ile SQL Injection, Command Injection, hard-coded secret tespiti
-- **Otomatik Engelleme:** Guvenlik acigi bulunan kod deploy edilemez
-- **Kendini Dogrulama:** Zafiyetli demo kod uzerinde kural seti her push'ta test edilir
-- **Bagimlilik Guvenligi:** pip-audit ile CVE taramasi, Dependabot ile otomatik guncelleme
-- **Anlik Bildirim:** Discord/Slack webhook ile uyari sistemi
-- **Docker Destegi:** Guvenli konteynerizasyon (non-root kullanici, minimal imaj)
-- **Egitim Odakli:** Zafiyetli ve guvenli kod yan yana karsilastirma
-- **Ozel Kurallar:** Projeye ozel Semgrep kural seti (CWE referanslariyla)
+- **Static Analysis:** SQL injection, command injection, and hard-coded
+  secret detection with Semgrep
+- **Automatic Blocking:** Code with security findings cannot be deployed
+- **Self-Verification:** The rule set is tested against the vulnerable demo
+  code on every push
+- **Dependency Security:** CVE scanning with pip-audit, automated updates
+  with Dependabot
+- **Instant Notifications:** Discord/Slack alerts via webhooks
+- **Docker Support:** Secure containerization (non-root user, minimal image)
+- **Education-Focused:** Vulnerable and secure implementations side by side
+- **Custom Rules:** Project-specific Semgrep rule set with CWE references
 
-## Teknoloji Stack'i
+## Tech Stack
 
-| Teknoloji | Amac |
-|-----------|------|
-| Python/Flask | Web API (zafiyetli + guvenli surum) |
-| Docker | Konteynerizasyon |
-| GitHub Actions | CI/CD otomasyon |
-| Semgrep | Statik kod analizi (SAST) |
-| pip-audit | Bagimlilik zafiyet taramasi (SCA) |
-| Webhook | Discord/Slack bildirim |
+| Technology | Purpose |
+|------------|---------|
+| Python/Flask | Web API (vulnerable + secure versions) |
+| Docker | Containerization |
+| GitHub Actions | CI/CD automation |
+| Semgrep | Static application security testing (SAST) |
+| pip-audit | Dependency vulnerability scanning (SCA) |
+| Webhooks | Discord/Slack notifications |
 
-## Proje Yapisi
+## Project Structure
 
 ```
 security-cicd-pipeline/
 ├── app/
-│   ├── vulnerable/    # Kasitli zafiyetli kod (demo - ASLA deploy edilmez)
-│   └── secure/        # Guvenli uretim kodu (guvenlik kapisindan gecen)
+│   ├── vulnerable/    # Intentionally vulnerable code (demo - NEVER deployed)
+│   └── secure/        # Secure production code (passes the security gate)
 ├── semgrep/
-│   ├── custom/        # Ozel Semgrep kurallari
-│   └── rules/         # Hazir kural setleri referansi
+│   ├── custom/        # Custom Semgrep rules
+│   └── rules/         # Reference for the registry rule sets
 ├── .github/
-│   ├── workflows/     # CI/CD pipeline (guvenlik kapisi)
-│   └── dependabot.yml # Otomatik bagimlilik guncelleme
-├── docker/            # Dockerfile ve compose
-├── notifications/     # Webhook bildirim sistemi
-├── tests/             # Guvenlik ve entegrasyon testleri
-├── scripts/           # Otomasyon scriptleri
-└── docs/              # Dokumantasyon
+│   ├── workflows/     # CI/CD pipeline (security gate)
+│   └── dependabot.yml # Automated dependency updates
+├── docker/            # Dockerfile and compose
+├── notifications/     # Webhook notification system
+├── tests/             # Security and integration tests
+├── scripts/           # Automation scripts
+└── docs/              # Documentation
 ```
 
-## Onemli Notlar
+## Important Notes
 
-- `app/vulnerable/` klasoru **kasitli olarak** zafiyet icerir; Semgrep kurallarinin
-  calistigini kanitlamak icin kullanilir. Docker imajina dahil edilmez
-  (`.dockerignore`) ve guvenlik kapisi taramasina girmez.
-- `.env` dosyasi gitignore'dadir ve asla commit edilmemelidir; sablon icin
-  `.env.example` dosyasina bakin.
-- Zafiyetli koddaki AWS anahtarlari AWS'nin resmi dokumantasyon ornekleridir,
-  gercek degildir.
+- The `app/vulnerable/` directory contains vulnerabilities **on purpose**; it
+  exists to prove that the Semgrep rules work. It is excluded from the Docker
+  image (`.dockerignore`) and is not part of the security gate scan.
+- The `.env` file is gitignored and must never be committed; see
+  `.env.example` for the template.
+- The AWS keys in the vulnerable code are the official AWS documentation
+  examples — they are not real credentials.
 
-## Dokumantasyon
+## Documentation
 
-- [Mimari](docs/ARCHITECTURE.md) - Sistem mimarisi ve akis diyagrami
-- [Kurulum](docs/SETUP_GUIDE.md) - Adim adim kurulum rehberi
-- [Guvenlik Kurallari](docs/SECURITY_RULES.md) - Semgrep kural aciklamalari
-- [Katkida Bulunma](docs/CONTRIBUTING.md) - Gelistirme rehberi
+- [Architecture](docs/ARCHITECTURE.md) - System architecture and flow diagram
+- [Setup Guide](docs/SETUP_GUIDE.md) - Step-by-step installation
+- [Security Rules](docs/SECURITY_RULES.md) - Semgrep rule explanations
+- [Contributing](docs/CONTRIBUTING.md) - Development guide
 
-## Lisans
+Note: the in-code comments and the documents above are written in Turkish.
+
+## License
 
 [MIT](LICENSE)
