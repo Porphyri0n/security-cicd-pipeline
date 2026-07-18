@@ -1,5 +1,5 @@
 # ---- Base Image ----
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 
 # Guvenlik: root olmayan kullanici olustur
 RUN groupadd -r appuser && useradd -r -g appuser appuser
