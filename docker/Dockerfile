@@ -4,6 +4,11 @@ FROM python:3.11-slim AS base
 # Guvenlik: root olmayan kullanici olustur
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# /api/ping endpoint'i icin ping komutu (slim imajda yuklu gelmez)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends iputils-ping && \
+    rm -rf /var/lib/apt/lists/*
+
 # Calisma dizini
 WORKDIR /app
 

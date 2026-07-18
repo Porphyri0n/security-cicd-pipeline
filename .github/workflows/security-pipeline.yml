@@ -11,12 +11,21 @@ on:
   # Manuel tetikleme (test amacli)
   workflow_dispatch:
 
+# Guvenlik: workflow'a sadece kod okuma izni ver
+permissions:
+  contents: read
+
+# Ayni branch icin ust uste tetiklenen kosulari iptal et
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # ============================================================
 # ORTAM DEGISKENLERI
 # ============================================================
 env:
   PYTHON_VERSION: "3.11"
-  SEMGREP_RULES: "p/python p/flask p/secrets p/owasp-top-ten"
+  SEMGREP_RULESETS: "p/python p/flask p/secrets p/owasp-top-ten"
 
 # ============================================================
 # IS AKISI (JOBS)
@@ -24,74 +33,70 @@ env:
 jobs:
 
   # ----------------------------------------------------------
-  # JOB 1: Statik Guvenlik Analizi (Semgrep)
+  # JOB 1: Guvenlik Kapisi - uretim kodunun (app/secure) taranmasi
+  # ERROR seviyesinde bulgu varsa pipeline DURUR.
   # ----------------------------------------------------------
-  security-scan:
-    name: "Semgrep Guvenlik Taramasi"
+  security-gate:
+    name: "Guvenlik Kapisi (Semgrep - app/secure)"
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      # Adim 1: Kodu cek
       - name: "Kodu cek (Checkout)"
         uses: actions/checkout@v4
 
-      # Adim 2: Python kur (pip cache ile)
       - name: "Python kur"
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
 
-      # Adim 3: Bagimliliklari yukle
       - name: "Bagimliliklari yukle"
         run: |
           pip install -r app/requirements.txt
           pip install semgrep
 
-      # Adim 4: Semgrep ile tarama (KRITIK ADIM)
-      - name: "Semgrep Guvenlik Taramasi"
-        id: semgrep_scan
+      - name: "Semgrep Guvenlik Taramasi (uretim kodu)"
         run: |
-          echo "=== Semgrep Taramasi Basliyor ==="
+          echo "=== Semgrep Taramasi Basliyor: app/secure/ ==="
+
+          # Hazir kural setlerini --config argumanlarina cevir
+          CONFIG_ARGS="--config semgrep/custom/"
+          for ruleset in $SEMGREP_RULESETS; do
+            CONFIG_ARGS="$CONFIG_ARGS --config $ruleset"
+          done
 
           # JSON rapor olustur
-          semgrep \
-            --config p/python \
-            --config p/flask \
-            --config p/secrets \
-            --config p/owasp-top-ten \
-            --config semgrep/custom/ \
+          semgrep $CONFIG_ARGS \
             --json \
             --output semgrep-report.json \
-            app/ || true
+            app/secure/ || true
 
-          # Bulgu sayisini hesapla
-          FINDINGS=$(cat semgrep-report.json | python3 -c "
+          # Bulgulari degerlendir; ERROR varsa pipeline'i durdur
+          python3 - <<'EOF'
           import json, sys
-          data = json.load(sys.stdin)
-          errors = [r for r in data.get('results', []) if r.get('extra', {}).get('severity') == 'ERROR']
-          warnings = [r for r in data.get('results', []) if r.get('extra', {}).get('severity') == 'WARNING']
-          print(f'ERRORS={len(errors)}')
-          print(f'WARNINGS={len(warnings)}')
-          print(f'TOTAL={len(data.get(\"results\", []))}')
-          ")
 
-          echo "$FINDINGS"
-          echo "$FINDINGS" >> $GITHUB_OUTPUT
+          with open("semgrep-report.json") as f:
+              data = json.load(f)
 
-          # ERROR seviyesinde bulgu varsa pipeline'i DURDUR
-          ERROR_COUNT=$(echo "$FINDINGS" | grep ERRORS | cut -d= -f2)
-          if [ "$ERROR_COUNT" -gt 0 ]; then
-            echo "HATA: $ERROR_COUNT adet ERROR seviyesinde guvenlik acigi bulundu!"
-            echo "scan_failed=true" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "BASARILI: Kritik guvenlik acigi bulunamadi."
-            echo "scan_failed=false" >> $GITHUB_OUTPUT
-          fi
+          results = data.get("results", [])
+          errors = [r for r in results if r.get("extra", {}).get("severity") == "ERROR"]
+          warnings = [r for r in results if r.get("extra", {}).get("severity") == "WARNING"]
 
-      # Adim 5: Raporu artifact olarak kaydet
+          print(f"Toplam bulgu: {len(results)} ({len(errors)} ERROR, {len(warnings)} WARNING)")
+          for r in results:
+              sev = r.get("extra", {}).get("severity", "?")
+              path = r.get("path", "?")
+              line = r.get("start", {}).get("line", "?")
+              msg = r.get("extra", {}).get("message", "?").strip().splitlines()[0][:100]
+              print(f"  [{sev}] {path}:{line} - {msg}")
+
+          if errors:
+              print(f"HATA: {len(errors)} adet ERROR seviyesinde guvenlik acigi bulundu!")
+              sys.exit(1)
+          print("BASARILI: Kritik guvenlik acigi bulunamadi.")
+          EOF
+
       - name: "Semgrep Raporunu Kaydet"
         if: always()
         uses: actions/upload-artifact@v4
@@ -100,7 +105,7 @@ jobs:
           path: semgrep-report.json
           retention-days: 30
 
-      # Adim 6: Basarisizsa webhook ile bildir (Discord + Slack)
+      # Basarisizsa webhook ile bildir (Discord + Slack)
       - name: "Guvenlik Uyarisi Gonder"
         if: failure()
         run: |
@@ -113,12 +118,115 @@ jobs:
             --platform slack || true
 
   # ----------------------------------------------------------
-  # JOB 2: Docker Build (Sadece guvenlik taramasi gecerse)
+  # JOB 2: Kural Dogrulama - zafiyetli kod (app/vulnerable) taranir
+  # ve Semgrep'in zafiyetleri YAKALADIGI kanitlanir.
+  # Bulgu bulunamazsa kural seti bozulmus demektir -> pipeline durur.
+  # ----------------------------------------------------------
+  rule-verification:
+    name: "Kural Dogrulama (Semgrep - app/vulnerable)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: "Kodu cek (Checkout)"
+        uses: actions/checkout@v4
+
+      - name: "Python kur"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: "Semgrep yukle"
+        run: pip install semgrep
+
+      - name: "Zafiyetli Kodu Tara (bulgu BEKLENIYOR)"
+        run: |
+          echo "=== Kural Dogrulama: app/vulnerable/ taraniyor ==="
+
+          CONFIG_ARGS="--config semgrep/custom/"
+          for ruleset in $SEMGREP_RULESETS; do
+            CONFIG_ARGS="$CONFIG_ARGS --config $ruleset"
+          done
+
+          semgrep $CONFIG_ARGS \
+            --json \
+            --output vulnerable-report.json \
+            app/vulnerable/ || true
+
+          # Zafiyetli kodda EN AZ 5 bulgu bekleniyor
+          python3 - <<'EOF'
+          import json, sys
+
+          with open("vulnerable-report.json") as f:
+              data = json.load(f)
+
+          results = data.get("results", [])
+          print(f"Zafiyetli kodda {len(results)} bulgu tespit edildi.")
+
+          if len(results) < 5:
+              print("HATA: Kural seti zafiyetleri yakalayamadi! Kurallar bozulmus olabilir.")
+              sys.exit(1)
+          print("BASARILI: Guvenlik kapisi zafiyetleri yakaliyor.")
+          EOF
+
+  # ----------------------------------------------------------
+  # JOB 3: Testler - pytest ile guvenlik ve entegrasyon testleri
+  # ----------------------------------------------------------
+  tests:
+    name: "Testler (pytest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: "Kodu cek (Checkout)"
+        uses: actions/checkout@v4
+
+      - name: "Python kur"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: "Bagimliliklari yukle"
+        run: |
+          pip install -r app/requirements.txt -r requirements-dev.txt
+          pip install semgrep
+
+      - name: "Testleri calistir"
+        run: pytest tests/ -v --tb=short
+
+  # ----------------------------------------------------------
+  # JOB 4: Bagimlilik Denetimi - bilinen CVE'ler icin pip-audit
+  # ----------------------------------------------------------
+  dependency-audit:
+    name: "Bagimlilik Denetimi (pip-audit)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: "Kodu cek (Checkout)"
+        uses: actions/checkout@v4
+
+      - name: "Python kur"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: "pip-audit calistir"
+        run: |
+          pip install pip-audit
+          pip-audit -r app/requirements.txt
+
+  # ----------------------------------------------------------
+  # JOB 5: Docker Build (Tum guvenlik kontrolleri gecerse)
   # ----------------------------------------------------------
   docker-build:
     name: "Docker Build"
     runs-on: ubuntu-latest
-    needs: security-scan  # GUVENLIK KAPISI: Tarama gecmeden build yapilmaz
+    # GUVENLIK KAPISI: Tum kontroller gecmeden build yapilmaz
+    needs: [security-gate, rule-verification, tests, dependency-audit]
     timeout-minutes: 10
 
     steps:
@@ -133,7 +241,7 @@ jobs:
         run: echo "Docker image basariyla olusturuldu"
 
   # ----------------------------------------------------------
-  # JOB 3: Deploy (Sadece build gecerse)
+  # JOB 6: Deploy (Sadece build gecerse ve main branch'te)
   # ----------------------------------------------------------
   deploy:
     name: "Canliya Al (Deploy)"
@@ -150,7 +258,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
 
       - name: "Deploy Simulasyonu"
         run: |

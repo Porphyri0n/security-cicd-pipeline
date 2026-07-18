@@ -13,7 +13,7 @@
 
 ```bash
 git clone <repo-url>
-cd secure-cicd-pipeline
+cd security-cicd-pipeline
 ```
 
 ### 2. Otomatik kurulum

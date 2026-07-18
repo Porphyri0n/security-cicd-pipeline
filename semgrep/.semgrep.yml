@@ -1,16 +1,13 @@
 # .semgrep.yml - Projenin ana Semgrep yapilandirmasi
 
-rules: []  # Ozel kurallar ayri dosyalarda tanimli
+rules: []  # Ozel kurallar semgrep/custom/ altindaki ayri dosyalarda tanimli
 
-# Kullanilan hazir kural setleri (CI'da --config ile belirtilir):
+# Kullanilan hazir kural setleri (CI'da SEMGREP_RULESETS ortam degiskeni
+# uzerinden --config argumanlarina cevrilir):
 # - p/python          -> Python genel guvenlik kurallari
 # - p/flask           -> Flask'a ozel guvenlik kurallari
-# - p/security-audit  -> Genel guvenlik denetim kurallari
 # - p/secrets         -> Hard-coded secret tespiti
 # - p/owasp-top-ten   -> OWASP Top 10 zafiyetleri
 
-# Taranmayacak dosya/klasorler:
-# exclude:
-#   - "tests/*"
-#   - "docs/*"
-#   - "*.md"
+# Belirli dosyalari tarama disi birakmak icin CLI'da --exclude kullanin:
+#   semgrep --config semgrep/custom/ --exclude "tests/*" app/

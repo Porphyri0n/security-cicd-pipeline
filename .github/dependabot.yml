@@ -1,0 +1,27 @@
+# Bagimliliklari otomatik guncel tutar; guncellemeler PR olarak acilir
+# ve her PR guvenlik pipeline'indan gecmek zorundadir.
+version: 2
+updates:
+  # Uygulama bagimliliklari (app/requirements.txt)
+  - package-ecosystem: "pip"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+
+  # Gelistirme bagimliliklari (requirements-dev.txt)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions surumleri
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Docker base image (docker/Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"

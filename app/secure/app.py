@@ -43,8 +43,10 @@ def ping():
     """DUZELTILDI: Girdi dogrulama + shell=False"""
     data = request.get_json()
     host = data.get("host", "")
-    # Sadece IP veya domain formati kabul et
-    if not re.match(r'^[a-zA-Z0-9.\-]+$', host):
+    # Sadece IP veya domain formati kabul et.
+    # Ilk karakter alfanumerik olmali: "-c" gibi degerlerin ping'e
+    # komut satiri bayragi olarak gecmesini (argument injection) engeller.
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9.\-]*$', host):
         logger.warning("Gecersiz host denemesi: %s", host)
         return jsonify({"error": "Gecersiz host formati"}), 400
     try:
@@ -55,6 +57,9 @@ def ping():
         return jsonify({"result": result.stdout})
     except subprocess.TimeoutExpired:
         return jsonify({"error": "Zaman asimi"}), 408
+    except FileNotFoundError:
+        logger.error("ping komutu bu sistemde bulunamadi")
+        return jsonify({"error": "ping komutu kullanilamiyor"}), 503
 
 
 # DUZELTILDI: /api/debug endpoint'i tamamen kaldirildi

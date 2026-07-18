@@ -11,14 +11,17 @@ services:
       - API_SECRET_KEY=${API_SECRET_KEY:-dev-secret-key}
       - DEBUG_MODE=false
     env_file:
-      - ../.env  # Hassas degiskenler .env'den okunur
+      # Hassas degiskenler .env'den okunur; dosya yoksa compose yine calisir
+      - path: ../.env
+        required: false
     restart: unless-stopped
     networks:
       - app-network
 
   # Semgrep tarama servisi (opsiyonel, CI/CD disinda lokal test icin)
   semgrep-scanner:
-    image: returntocorp/semgrep:latest
+    # Guncel imaj adi semgrep/semgrep (returntocorp/semgrep eski isim)
+    image: semgrep/semgrep:1.96.0
     volumes:
       - ../app:/src/app:ro
       - ../semgrep:/src/semgrep:ro

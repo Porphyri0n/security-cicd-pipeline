@@ -28,6 +28,12 @@ def test_valid_ping(secure_client):
     assert response.status_code in [200, 408]
 
 
+def test_ping_rejects_flag_injection(secure_client):
+    """Tire ile baslayan host degeri (bayrak enjeksiyonu) 400 donmeli"""
+    response = secure_client.post("/api/ping", json={"host": "-c"})
+    assert response.status_code == 400
+
+
 def test_secure_api_version(secure_client):
     """Guvenli API versiyonu dogru olmali"""
     response = secure_client.get("/")

@@ -11,17 +11,28 @@ Hedef kullanici: DevSecOps ekipleri, yazilim muhendisleri, guvenlik analistleri.
 ## Mimari Diyagram
 
 ```
-Developer --> Git Push --> GitHub Actions --> Semgrep Scan
-                                                  |
-                                            +-----+-----+
-                                            |           |
-                                         FAIL         PASS
-                                            |           |
-                                       Webhook     Docker Build
-                                       Bildirim         |
-                                     (Discord/       Deploy
-                                      Slack)
+Developer --> Git Push --> GitHub Actions
+                               |
+              +----------------+----------------+----------------+
+              |                |                |                |
+       Guvenlik Kapisi   Kural Dogrulama     Testler      Bagimlilik
+       (app/secure       (app/vulnerable     (pytest)      Denetimi
+        Semgrep)          Semgrep - bulgu                 (pip-audit)
+              |            BEKLENIYOR)          |                |
+              |                |                |                |
+              +----------------+-------+--------+----------------+
+              |                        |
+            FAIL                  HEPSI PASS
+              |                        |
+         Webhook Bildirim         Docker Build
+         (Discord/Slack)               |
+         Pipeline DURUR            Deploy (sadece main)
 ```
+
+Not: Guvenlik kapisi sadece uretim kodunu (`app/secure/`) tarar. Zafiyetli
+demo kod (`app/vulnerable/`) ayri bir job'da taranir ve orada bulgu
+**bulunmasi beklenir** — bu, kural setinin calistigini her push'ta kanitlar.
+Bulgu cikmazsa kurallar bozulmus demektir ve pipeline durur.
 
 ## Bilesen Aciklamalari
 
@@ -39,15 +50,20 @@ Developer --> Git Push --> GitHub Actions --> Semgrep Scan
 ## Veri Akisi
 
 1. Gelistirici kod yazar ve GitHub'a push eder
-2. GitHub Actions otomatik tetiklenir
-3. Semgrep tum kodu statik analiz ile tarar
-4. Bulgu varsa: pipeline durur, Discord/Slack'e uyari gonderilir
-5. Bulgu yoksa: Docker image olusturulur
-6. Docker build basariliysa: deploy adimina gecilir (sadece main branch)
+2. GitHub Actions otomatik tetiklenir; dort kontrol paralel calisir:
+   - **Guvenlik Kapisi:** Semgrep uretim kodunu (`app/secure/`) tarar;
+     ERROR seviyesinde bulgu varsa pipeline durur, Discord/Slack'e uyari gider
+   - **Kural Dogrulama:** Semgrep zafiyetli demo kodu (`app/vulnerable/`)
+     tarar; bulgu bulunamazsa kural seti bozulmus demektir, pipeline durur
+   - **Testler:** pytest ile guvenlik ve entegrasyon testleri kosulur
+   - **Bagimlilik Denetimi:** pip-audit bilinen CVE'leri kontrol eder
+3. Tum kontroller gecerse: Docker image olusturulur
+4. Docker build basariliysa: deploy adimina gecilir (sadece main branch)
 
 ## Guvenlik Katmanlari
 
-- **Katman 1:** Semgrep statik analiz (SAST)
-- **Katman 2:** GitHub Actions security gate (otomatik engel)
-- **Katman 3:** Docker guvenlik uygulamalari (non-root user, minimal image)
-- **Katman 4:** Webhook bildirimleri (anlik farkindalik)
+- **Katman 1:** Semgrep statik analiz (SAST) + kural setinin kendini dogrulamasi
+- **Katman 2:** pip-audit bagimlilik taramasi (SCA) + Dependabot guncellemeleri
+- **Katman 3:** GitHub Actions security gate (otomatik engel, minimal izinler)
+- **Katman 4:** Docker guvenlik uygulamalari (non-root user, minimal image)
+- **Katman 5:** Webhook bildirimleri (anlik farkindalik)
