@@ -2,13 +2,8 @@
 # ve her PR guvenlik pipeline'indan gecmek zorundadir.
 version: 2
 updates:
-  # Uygulama bagimliliklari (app/requirements.txt)
-  - package-ecosystem: "pip"
-    directory: "/app"
-    schedule:
-      interval: "weekly"
-
-  # Gelistirme bagimliliklari (requirements-dev.txt)
+  # Python bagimliliklari - kok dizinden tarama app/requirements.txt ve
+  # requirements-dev.txt dosyalarinin ikisini de kapsar
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
